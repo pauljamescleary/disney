@@ -57,6 +57,7 @@ fn main() -> Result<(), String> {
             .render(format!("Title at {}", i).as_str())
             .blended(Color::WHITE)
             .unwrap();
+
         let texture = texture_creator
             .create_texture_from_surface(&surface)            
             .unwrap();
@@ -92,13 +93,4 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-
-fn load_image() -> Bytes {
-    // TODO: obviously we want to do this as non blocking    
-    let URL = "https://prod-ripcut-delivery.disney-plus.net/v1/variant/disney/BA5D31B7889E04AE0499D1B83A6E563E95B031436225C68D69E4C4789E13F183/scale?format=jpeg&quality=90&scalingAlgorithm=lanczos3&width=500";
-
-    // TODO: Ugly, need better conversion into anyhow here
-    reqwest::blocking::get(URL).expect("Failed fetching image").bytes().expect("Failed loading bytes from URL")
 }
