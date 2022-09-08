@@ -24,6 +24,9 @@ pub struct Shelf {
     label_height: Option<u32>,
 }
 impl Shelf {
+
+    /// Loads a Shelf
+    /// Loads tiles that live on the shelf
     pub fn load(content_set: ContentSet, height: u32, tile_padding: u32, y: i32) -> Shelf {
         let mut shelf = Shelf {
             title: content_set.title().clone(),

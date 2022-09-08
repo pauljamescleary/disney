@@ -5,6 +5,8 @@ use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;
 
+/// The main screen for the application
+/// The root of the application
 pub struct HomePage {
     shelf_padding: u32,
     tile_padding: u32,
@@ -13,6 +15,9 @@ pub struct HomePage {
     shelf_height: u32,
 }
 impl HomePage {
+
+    /// Loads a home page component, but does 
+    /// not do any rendering
     pub fn load(
         content_sets: Vec<ContentSet>,
         shelf_padding: u32,
@@ -32,7 +37,7 @@ impl HomePage {
         home_page
     }
 
-    // Load the shelves onto the home screen
+    /// Load the shelves onto the home screen
     fn load_shelves(&mut self, content_sets: Vec<ContentSet>) {
         // Maintain proper positioning on create
         // Each shelf should initially be before the one below it
@@ -50,13 +55,13 @@ impl HomePage {
         };
     }
 
-    // Re-render whatever is needed
+    /// Re-render whatever is needed
     pub fn draw(&mut self, font: &Font, canvas: &mut Canvas<Window>) {
         self.shelves.iter_mut().for_each(|s| s.draw(font, canvas));
     }
 
-    // Process an image load event, find the tile and
-    // send away
+    /// Process an image load event, find the tile and
+    /// send away
     pub fn on_image_load(&mut self, event: ImageLoadEvent) {
         let maybe_found_row = self
             .shelves
