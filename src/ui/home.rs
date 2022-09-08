@@ -1,5 +1,5 @@
 use crate::event::ImageLoadEvent;
-use crate::model::ContentSet;
+use crate::model::home::ContentSet;
 use crate::ui::shelf::Shelf;
 use sdl2::render::Canvas;
 use sdl2::ttf::Font;

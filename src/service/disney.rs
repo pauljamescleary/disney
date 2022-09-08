@@ -5,7 +5,7 @@ use reqwest::{Client, StatusCode};
 
 use crate::{
     event::{ImageLoadBatchEvent, ImageLoadEvent},
-    model::{ContentSet, HomeRoot, HomeScreen, SetRef},
+    model::home::{ContentSet, HomeRoot, HomeScreen, SetRef},
 };
 
 pub struct DisneyService {

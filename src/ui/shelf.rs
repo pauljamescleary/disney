@@ -1,5 +1,5 @@
 use crate::event::ImageLoadEvent;
-use crate::model::ContentSet;
+use crate::model::home::ContentSet;
 use crate::ui::tile::ShelfTile;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;

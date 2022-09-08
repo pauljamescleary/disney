@@ -1,7 +1,8 @@
 use anyhow::{Error, Result};
 use event::ImageLoadBatchEvent;
-use futures::stream::StreamExt;
-use sdl2::event::Event;
+use futures::StreamExt;
+use model::home::ContentSet;
+use sdl2::event::{Event, EventSender};
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -60,28 +61,12 @@ async fn main() -> Result<()> {
     ev.register_custom_event::<ImageLoadBatchEvent>()
         .map_err(Error::msg)?;
     let evs = ev.event_sender();
-    let event_sender = Arc::new(evs);
+    // let event_sender = Arc::new(evs);
 
     // kick off background process to async load images and send events
     // each batch of images are sent to the main event loop
     // to update the view
-    tokio::spawn({
-        let event_sender = Arc::clone(&event_sender);
-        async move {
-            disney
-                .stream_tile_images(fetched_content_sets, DEFAULT_IMAGE_SIZE.to_string())
-                .await
-                .for_each(|image_batch_event| {
-                    let event_sender = Arc::clone(&event_sender);
-                    async move {
-                        event_sender
-                            .push_custom_event(image_batch_event)
-                            .expect("Unable to push custom event");
-                    }
-                })
-                .await;
-        }
-    });
+    background_load_images(fetched_content_sets, disney, evs);
 
     // This moves all the things we just drew to the foreground
     canvas.present();
@@ -147,4 +132,31 @@ fn update_ui(canvas: &mut Canvas<Window>, font: &Font, ui: &mut HomePage) {
     canvas.clear();
     ui.draw(font, canvas);
     canvas.present();
+}
+
+fn background_load_images(
+    fetched_content_sets: Vec<ContentSet>,
+    disney: DisneyService,
+    event_sender: EventSender,
+) {
+    let event_sender = Arc::new(event_sender);
+    let disney = Arc::new(disney);
+    tokio::spawn({
+        let event_sender = Arc::clone(&event_sender);
+        let disney = Arc::clone(&disney);
+        async move {
+            disney
+                .stream_tile_images(fetched_content_sets, DEFAULT_IMAGE_SIZE.to_string())
+                .await
+                .for_each(|image_batch_event| {
+                    let event_sender = Arc::clone(&event_sender);
+                    async move {
+                        event_sender
+                            .push_custom_event(image_batch_event)
+                            .expect("Unable to push custom event");
+                    }
+                })
+                .await;
+        }
+    });
 }

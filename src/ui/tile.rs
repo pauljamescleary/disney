@@ -1,4 +1,4 @@
-use crate::model::ContentSetItem;
+use crate::model::home::ContentSetItem;
 use bytes::Bytes;
 use sdl2::image::LoadTexture;
 use sdl2::pixels::Color;
