@@ -12,7 +12,7 @@ use sdl2::video::Window;
 use service::disney::DisneyService;
 use std::path::Path;
 use std::sync::Arc;
-use ui::home::HomePage;
+use ui::home_page::HomePage;
 
 mod event;
 mod model;
