@@ -6,11 +6,12 @@ This application renders a demo Disney home screen and allows the user to scroll
 
 1. [Install Rust][install-rust]
 2. [Install Clippy][install-clippy]
-3. Run `cargo install cargo-vcpkg` to install vcpkg needed to build and run this app
-4. Run `cargo vcpkg build` to build the sdl2 dependencies
+3. [Install SDL2][install-sdl2]
+4. Run `cargo install cargo-vcpkg` to install vcpkg needed to build and run this app
 
 ## Developing
 
+- `cargo vcpkg build` to build the sdl2 dependencies
 - `cargo clippy` - runs the linter to ensure the code is clean
 - `cargo fmt` - formats all code
 - `cargo run` - runs the application
@@ -70,6 +71,7 @@ application requires the entire home screen json to be parsed before proceeding 
 [futures]: https://docs.rs/futures/latest/futures/
 [install-clippy]: https://github.com/rust-lang/rust-clippy#as-a-cargo-subcommand-cargo-clippy
 [install-rust]: https://forge.rust-lang.org/infra/other-installation-methods.html
+[install-sdl2]: https://github.com/Rust-SDL2/rust-sdl2
 [reqwest]: https://docs.rs/reqwest/latest/reqwest/
 [sdl2]: https://docs.rs/sdl2/latest/sdl2/
 [serde]: https://serde.rs/
