@@ -127,6 +127,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Actually paints the screen
 fn update_ui(canvas: &mut Canvas<Window>, font: &Font, ui: &mut HomePage) {
     canvas.set_draw_color(Color::BLACK);
     canvas.clear();
@@ -134,6 +135,9 @@ fn update_ui(canvas: &mut Canvas<Window>, font: &Font, ui: &mut HomePage) {
     canvas.present();
 }
 
+/// Background loads the tile images
+/// piping them through to the evnet loop
+/// via the EventSender
 fn background_load_images(
     fetched_content_sets: Vec<ContentSet>,
     disney: DisneyService,
@@ -142,8 +146,6 @@ fn background_load_images(
     let event_sender = Arc::new(event_sender);
     let disney = Arc::new(disney);
     tokio::spawn({
-        let event_sender = Arc::clone(&event_sender);
-        let disney = Arc::clone(&disney);
         async move {
             disney
                 .stream_tile_images(fetched_content_sets, DEFAULT_IMAGE_SIZE.to_string())
@@ -151,6 +153,8 @@ fn background_load_images(
                 .for_each(|image_batch_event| {
                     let event_sender = Arc::clone(&event_sender);
                     async move {
+
+                        // Sends a batch of images into the main event loop
                         event_sender
                             .push_custom_event(image_batch_event)
                             .expect("Unable to push custom event");
