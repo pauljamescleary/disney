@@ -73,7 +73,7 @@ impl Container {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentSet {
     text: ContentSetTitle,
@@ -83,6 +83,11 @@ pub struct ContentSet {
     items: Vec<ContentSetItem>, // represents all of the programs in a curated set
 }
 impl ContentSet {
+    pub fn set_title(&self, title: &String) -> ContentSet {
+        let mut new = self.clone();
+        new.text.title.full.set.default.content = title.clone();
+        new
+    }
     pub fn title(&self) -> &String {
         &self.text.title.full.set.default.content
     }

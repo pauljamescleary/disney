@@ -89,10 +89,14 @@ impl DisneyService {
         // through the loader, the ones that exist already will go through completed
         let fetched_content_sets = futures::stream::iter(home_screen.content_sets())
             .map(|cs| async {
-                if let Some(ref_id) = cs.ref_id() {
+                if let Some(ref_id) = cs.ref_id() { 
+                    // Note: sometimes the title coming back
+                    // changes, GordonRamsey is the example
+                    // here, we reset the title after load to be sure                   
                     self.load_set_ref(ref_id)
-                        .await
-                        .context("Loading content set")
+                        .await                        
+                        .context("Loading content set")                        
+                        .map(|set| set.set_title(cs.title()))                                           
                 } else {
                     Ok(cs)
                 }
