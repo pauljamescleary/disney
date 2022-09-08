@@ -1,6 +1,6 @@
 use crate::event::ImageLoadEvent;
 use crate::model::ContentSet;
-use crate::tile::ShelfTile;
+use crate::ui::tile::ShelfTile;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, TextureQuery};

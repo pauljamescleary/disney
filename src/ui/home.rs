@@ -1,6 +1,6 @@
 use crate::event::ImageLoadEvent;
 use crate::model::ContentSet;
-use crate::shelf::Shelf;
+use crate::ui::shelf::Shelf;
 use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;

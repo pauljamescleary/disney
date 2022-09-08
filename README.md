@@ -20,6 +20,14 @@ This application renders a demo Disney home screen and allows the user to scroll
 
 - `cargo run` will start the application.  All log entries will appear in stdout in the terminal.
 
+### Navigating
+
+- `key down` - scrolls down to the next row
+- `key up` - scrolls up to the previous row
+- `key left` - scrolls to the next program on a row
+- `key right` - scrolls to the prior program on a row
+- `ESC` - to quit
+ 
 ## Design
 
 This application uses [SDL2][sdl2] for the main UI engine, as that was one of the options in this take home project.

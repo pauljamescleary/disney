@@ -1,10 +1,6 @@
-use crate::event::{ImageLoadBatchEvent, ImageLoadEvent};
-use crate::home::HomePage;
-use crate::model::ContentSet;
-use crate::service::DisneyService;
-use anyhow::{Context, Error, Result};
+use anyhow::{Error, Result};
+use event::ImageLoadBatchEvent;
 use futures::stream::StreamExt;
-use futures::Stream;
 use sdl2::event::Event;
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
@@ -12,27 +8,27 @@ use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;
+use service::disney::DisneyService;
 use std::path::Path;
 use std::sync::Arc;
+use ui::home::HomePage;
 
 mod event;
-mod home;
 mod model;
 mod service;
-mod shelf;
-mod tile;
+mod ui;
 
 const DEFAULT_IMAGE_SIZE: &str = "1.78";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
+const DEFAULT_CONCURRENCY: usize = 20;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let concurrency = 20_usize;
-    let disney = DisneyService::new(concurrency);
+    let disney = DisneyService::new(DEFAULT_CONCURRENCY);
 
     // we have all of the content sets, they don't have images loaded yet, but we can load the screen
-    let fetched_content_sets = load_home_content_sets(&disney, concurrency).await?;
+    let fetched_content_sets = disney.load_home_content_sets().await?;
 
     // send content sets into the home page, consuming the content sets
     let mut ui = HomePage::load(fetched_content_sets.clone(), 50, 180, 20);
@@ -72,22 +68,18 @@ async fn main() -> Result<()> {
     tokio::spawn({
         let event_sender = Arc::clone(&event_sender);
         async move {
-            stream_tile_images(
-                &disney,
-                fetched_content_sets,
-                20,
-                DEFAULT_IMAGE_SIZE.to_string(),
-            )
-            .await
-            .for_each(|image_batch_event| {
-                let event_sender = Arc::clone(&event_sender);
-                async move {
-                    event_sender
-                        .push_custom_event(image_batch_event)
-                        .expect("Unable to push custom event");
-                }
-            })
-            .await;
+            disney
+                .stream_tile_images(fetched_content_sets, DEFAULT_IMAGE_SIZE.to_string())
+                .await
+                .for_each(|image_batch_event| {
+                    let event_sender = Arc::clone(&event_sender);
+                    async move {
+                        event_sender
+                            .push_custom_event(image_batch_event)
+                            .expect("Unable to push custom event");
+                    }
+                })
+                .await;
         }
     });
 
@@ -155,108 +147,4 @@ fn update_ui(canvas: &mut Canvas<Window>, font: &Font, ui: &mut HomePage) {
     canvas.clear();
     ui.draw(font, canvas);
     canvas.present();
-}
-
-/// Produces an async stream that background
-/// loads all of the iamges in a controlled manner
-/// Can tweak parallelism in here
-async fn stream_tile_images<'a>(
-    disney: &'a DisneyService,
-    content_sets: Vec<ContentSet>,
-    concurrency: usize,
-    image_size: String,
-) -> impl Stream<Item = ImageLoadBatchEvent> + '_ {
-    // Iterate over pairs (content_set_tile, tile_img_url)
-    // filtering out (and logging) those tile images without a url
-    let disney = Arc::new(disney);
-    let curated_items = content_sets.into_iter().flat_map(move |cs| {
-        let cs_title = cs.title().clone();
-        let img_size = image_size.clone();
-        cs.items().into_iter().filter_map(move |item| {
-            if let Some(img_url) = item.tile_image_url(&img_size) {
-                Some((cs_title.clone(), img_url.clone()))
-            } else {
-                println!("No image found for size {:?} and item {:?}", img_size, item);
-                None
-            }
-        })
-    });
-
-    // Main flow, for each image, fetch the image bytes from the cdn
-    // logging any failures along the way
-    let disney = Arc::clone(&disney);
-    let fetch_image_futures =
-        futures::stream::iter(curated_items).map(move |(content_set_title, item_image_url)| {
-            let disney = Arc::clone(&disney);
-            async move {
-                disney
-                    .load_tile_image_bytes(&item_image_url)
-                    .await
-                    .map(|image_bytes| ImageLoadEvent {
-                        img_url: item_image_url.clone(),
-                        bytes: image_bytes,
-                        content_set_title: content_set_title.clone(),
-                    })
-                    .map(Some)
-                    .unwrap_or_else(|e| {
-                        println!("Failed fetching image url {:?}", e);
-                        None
-                    })
-            }
-        });
-
-    // Taking our stream, run it concurrently (buffered)
-    // and then group together 15 images at a time or until the stream is finished
-    // sending batches of images to the UI is faster than
-    // sending individual images to the ui
-    fetch_image_futures
-        .buffered(concurrency)
-        .ready_chunks(15)
-        .map(|img_load_events| ImageLoadBatchEvent {
-            events: img_load_events.into_iter().flatten().collect(),
-        })
-}
-
-/// Loads home page content sets
-///
-/// When requesting the home page, some of the
-/// content sets are returned as "refs", and
-/// "refs" do not have any images in them.
-///
-/// Load any missing content sets
-async fn load_home_content_sets(
-    disney: &DisneyService,
-    concurrency: usize,
-) -> Result<Vec<ContentSet>> {
-    // load the home screen
-    let home_screen = disney.load_home_screen().await?;
-
-    // We want to maintain order of the content sets, so all will flow
-    // through the loader, the ones that exist already will go through completed
-    let fetched_content_sets = futures::stream::iter(home_screen.content_sets())
-        .map(|cs| async {
-            if let Some(ref_id) = cs.ref_id() {
-                disney
-                    .load_set_ref(ref_id)
-                    .await
-                    .context("Loading content set")
-            } else {
-                Ok(cs)
-            }
-        })
-        .buffered(concurrency)
-        .collect::<Vec<Result<ContentSet>>>()
-        .await;
-
-    let content_sets_without_failures: Vec<ContentSet> = fetched_content_sets
-        .into_iter()
-        .inspect(|result| {
-            if let Err(e) = result {
-                println!("Failure loading content set: {:?}", e);
-            }
-        })
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(content_sets_without_failures)
 }
