@@ -6,12 +6,12 @@ This application renders a demo Disney home screen and allows the user to scroll
 
 1. [Install Rust][install-rust]
 2. [Install Clippy][install-clippy]
-3. [Install SDL2][install-sdl2]
+3. [Install SDL2][install-sdl2] - on a mac `brew install sdl2` is sufficient
 4. Run `cargo install cargo-vcpkg` to install vcpkg needed to build and run this app
 
 ## Developing
 
-- `cargo vcpkg build` to build the sdl2 dependencies
+- `cargo vcpkg build` to build the sdl2 dependencies (this will take some time)
 - `cargo clippy` - runs the linter to ensure the code is clean
 - `cargo fmt` - formats all code
 - `cargo run` - runs the application
@@ -30,8 +30,7 @@ This application renders a demo Disney home screen and allows the user to scroll
  
 ## Design
 
-This application uses [SDL2][sdl2] for the main UI engine, as that was one of the options in this take home project.
-It also appears to have good, mature `rust` library that is actively maintained.
+This application uses [SDL2][sdl2] for the main UI engine, which is a `rust` library that is actively maintained.
 
 ### Code and libraries
 
