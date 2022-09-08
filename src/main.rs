@@ -1,253 +1,262 @@
-use bytes::Bytes;
-use sdl2::image::{InitFlag, LoadTexture};
-use sdl2::pixels::Color;
+use crate::event::{ImageLoadBatchEvent, ImageLoadEvent};
+use crate::home::HomePage;
+use crate::model::ContentSet;
+use crate::service::DisneyService;
+use anyhow::{Context, Error, Result};
+use futures::stream::StreamExt;
+use futures::Stream;
 use sdl2::event::Event;
+use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
-use sdl2::rect::Rect;
-use sdl2::render::{WindowCanvas, Canvas, TextureQuery};
+use sdl2::pixels::Color;
+use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;
-use std::cmp::min;
 use std::path::Path;
-use std::time::Duration;
+use std::sync::Arc;
 
+mod event;
 mod home;
+mod model;
+mod service;
+mod shelf;
+mod tile;
 
-static SCREEN_WIDTH: u32 = 800;
-static SCREEN_HEIGHT: u32 = 600;
+const DEFAULT_IMAGE_SIZE: &str = "1.78";
+const WINDOW_WIDTH: u32 = 1920;
+const WINDOW_HEIGHT: u32 = 1080;
 
-// handle the annoying Rect i32
-macro_rules! rect(
-    ($x:expr, $y:expr, $w:expr, $h:expr) => (
-        Rect::new($x as i32, $y as i32, $w as u32, $h as u32)
-    )
-);
+#[tokio::main]
+async fn main() -> Result<()> {
+    let concurrency = 20_usize;
+    let disney = DisneyService::new(concurrency);
 
-// Scale fonts to a reasonable size when they're too big (though they might look less smooth)
-fn get_centered_rect(rect_width: u32, rect_height: u32, cons_width: u32, cons_height: u32) -> Rect {
-    let wr = rect_width as f32 / cons_width as f32;
-    let hr = rect_height as f32 / cons_height as f32;
+    // we have all of the content sets, they don't have images loaded yet, but we can load the screen
+    let fetched_content_sets = load_home_content_sets(&disney, concurrency).await?;
 
-    let (w, h) = if wr > 1f32 || hr > 1f32 {
-        if wr > hr {
-            println!("Scaling down! The text will look worse!");
-            let h = (rect_height as f32 / wr) as i32;
-            (cons_width as i32, h)
-        } else {
-            println!("Scaling down! The text will look worse!");
-            let w = (rect_width as f32 / hr) as i32;
-            (w, cons_height as i32)
-        }
-    } else {
-        (rect_width as i32, rect_height as i32)
-    };
+    // send content sets into the home page, consuming the content sets
+    let mut ui = HomePage::load(fetched_content_sets.clone(), 50, 180, 20);
 
-    let cx = (SCREEN_WIDTH as i32 - w) / 2;
-    let cy = (SCREEN_HEIGHT as i32 - h) / 2;
-    rect!(cx, cy, w, h)
-}
+    // Load the SDL context
+    let sdl_context = sdl2::init().map_err(Error::msg)?;
+    let video_subsystem = sdl_context.video().map_err(Error::msg)?;
+    let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG).map_err(Error::msg)?;
+    let ttf_context = sdl2::ttf::init().map_err(Error::msg)?;
 
-fn run(font_path: &Path) -> Result<(), String> {
-    let sdl_context = sdl2::init()?;
-    let video_subsys = sdl_context.video()?;
-    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
-
-    let window = video_subsys
-        .window("SDL2_TTF Example", SCREEN_WIDTH, SCREEN_HEIGHT)
+    let window = video_subsystem
+        .window("Home", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .resizable()
-        .opengl()
-        .build()
-        .map_err(|e| e.to_string())?;
+        .build()?;
 
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    let texture_creator = canvas.texture_creator();
+    let mut canvas = window.into_canvas().build()?;
 
-    // Load a font
-    let mut font = ttf_context.load_font(font_path, 128)?;
-    font.set_style(sdl2::ttf::FontStyle::BOLD);
+    let font = ttf_context
+        .load_font(Path::new("./assets/Roboto-Regular.ttf"), 18)
+        .map_err(Error::msg)?;
 
-    // render a surface, and convert it to a texture bound to the canvas
-    let surface = font
-        .render("Hello Rust!")
-        .blended(Color::RGBA(255, 0, 0, 255))
-        .map_err(|e| e.to_string())?;
-    let texture = texture_creator
-        .create_texture_from_surface(&surface)
-        .map_err(|e| e.to_string())?;
+    // Draw the initial UI (it will be blank mostly until we have images)
+    ui.draw(&font, &mut canvas);
 
-    canvas.set_draw_color(Color::RGBA(195, 217, 255, 255));
-    canvas.clear();
+    // Initialize the event loop
+    let mut event_pump = sdl_context.event_pump().map_err(Error::msg)?;
+    let ev = sdl_context.event().map_err(Error::msg)?;
+    ev.register_custom_event::<ImageLoadBatchEvent>()
+        .map_err(Error::msg)?;
+    let evs = ev.event_sender();
+    let event_sender = Arc::new(evs);
 
-    let TextureQuery { width, height, .. } = texture.query();
+    // kick off background process to async load images and send events
+    // each batch of images are sent to the main event loop
+    // to update the view
+    tokio::spawn({
+        let event_sender = Arc::clone(&event_sender);
+        async move {
+            stream_tile_images(
+                &disney,
+                fetched_content_sets,
+                20,
+                DEFAULT_IMAGE_SIZE.to_string(),
+            )
+            .await
+            .for_each(|image_batch_event| {
+                let event_sender = Arc::clone(&event_sender);
+                async move {
+                    event_sender
+                        .push_custom_event(image_batch_event)
+                        .expect("Unable to push custom event");
+                }
+            })
+            .await;
+        }
+    });
 
-    // If the example text is too big for the screen, downscale it (and center irregardless)
-    let padding = 64;
-    let target = get_centered_rect(
-        width,
-        height,
-        SCREEN_WIDTH - padding,
-        SCREEN_HEIGHT - padding,
-    );
-
-    canvas.copy(&texture, None, Some(target))?;
+    // This moves all the things we just drew to the foreground
     canvas.present();
 
-    'mainloop: loop {
-        for event in sdl_context.event_pump()?.poll_iter() {
+    'running: loop {
+        // Handle events forever
+        for event in event_pump.poll_iter() {
             match event {
-                Event::KeyDown {
+                Event::Quit { .. }
+                | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
+                } => {
+                    break 'running;
                 }
-                | Event::Quit { .. } => break 'mainloop,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
+                    ui.on_key_left();
+                    update_ui(&mut canvas, &font, &mut ui);
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
+                    ui.on_key_right();
+                    update_ui(&mut canvas, &font, &mut ui);
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => {
+                    ui.on_key_down();
+                    update_ui(&mut canvas, &font, &mut ui);
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
+                    ui.on_key_up();
+                    update_ui(&mut canvas, &font, &mut ui);
+                }
+                custom_event if custom_event.is_user_event() => {
+                    let ce = custom_event
+                        .as_user_event_type::<ImageLoadBatchEvent>()
+                        .expect("Unable to cast custom event to ImageLoadBatchEvent");
+
+                    for event in ce.events {
+                        ui.on_image_load(event);
+                    }
+                    update_ui(&mut canvas, &font, &mut ui);
+                }
                 _ => {}
             }
         }
     }
-
     Ok(())
 }
 
-fn main() -> Result<(), String> {
-    run(Path::new("./assets/Roboto-Regular.ttf"))?;
-    Ok(())
-
-    // let sdl_context = sdl2::init()?;
-    // let video_subsystem = sdl_context.video()?;
-    // let font_context = sdl2::ttf::init().unwrap();
-
-    // let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG)?;
-
-    // let window = video_subsystem.window("game tutorial", SCREEN_WIDTH, SCREEN_HEIGHT)
-    //     .position_centered()
-    //     .resizable()
-    //     .build()
-    //     .expect("could not initialize video subsystem");
-
-    // let mut canvas = window.into_canvas().build()
-    //     .expect("could not make a canvas");
-
-    // // Load an image
-    // let bg_image = load_image();
-    // let texture_creator = canvas.texture_creator();
-    // let texture = texture_creator.load_texture_bytes(bg_image.as_ref()).expect("Failed loading texture bytes");            
-
-    // let mut scroller = Rect::new(0, 10, canvas.viewport().width() * 2, 200);
-
-    // let font = font_context.load_font("./assets/Roboto-Regular.ttf", 12).unwrap();
-    // let msg = font.render("What is happening here why is this thing doing this I have no idea why it is doing what it is doing...").blended(Color::RED).unwrap();
-    // let texture_creator = canvas.texture_creator();
-    // let msg_texture = texture_creator.create_texture_from_surface(msg).unwrap();
-    // canvas.copy(&msg_texture, None, Some(scroller)).unwrap();
-    // canvas.present();
-
-    // let mut event_pump = sdl_context.event_pump()?;
-    // let mut i = 0;
-    // 'running: loop {
-    //     // Handle events
-    //     for event in event_pump.poll_iter() {
-    //         match event {
-    //             Event::Quit {..} |
-    //             Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-    //                 break 'running;
-    //             },
-    //             Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
-    //                 println!("RIGHT!");
-    //             }
-    //             _ => {}
-    //         }
-    //     }
-
-    //     i += 1;
-    //     if i > 1200 {
-    //         i = 0;
-    //     }
-
-    //     // canvas.set_draw_color(Color::BLACK);
-    //     // canvas.clear();
-    //     // canvas.set_draw_color(Color::WHITE);
-    //     // // scroller.set_x(i);
-    //     // // canvas.draw_rect(scroller).unwrap(); 
-        
-    //     // canvas.present();       
-    //     // render_scrollable_rect(&mut canvas, i);
-    //     // Time management!  60 frames per second
-    //     ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    // }
-
-    // Ok(())
-}
-
-fn render_scrollable_rect(canvas: &mut Canvas<Window>, i: i32) {
+fn update_ui(canvas: &mut Canvas<Window>, font: &Font, ui: &mut HomePage) {
     canvas.set_draw_color(Color::BLACK);
     canvas.clear();
-
-    // create a new rect, that is twice as wide as the window
-    // leaving a margin on the left and the top
-    let left_edge = 20;
-    let top_edge = 20;
-    let mut scroll = Rect::new(left_edge, top_edge, canvas.viewport().width() * 2, 200);
-
-    // so we can set x to POSITIVE to move to left, and NEGATIVE to move to right
-    scroll.set_x(i);
-
-    canvas.set_draw_color(Color::WHITE);
-    canvas.draw_rect(scroll).unwrap();
-    // canvas.set_clip_rect(scroll);
+    ui.draw(font, canvas);
     canvas.present();
 }
 
-fn load_image() -> Bytes {
-    // TODO: obviously we want to do this as non blocking    
-    let URL = "https://prod-ripcut-delivery.disney-plus.net/v1/variant/disney/BA5D31B7889E04AE0499D1B83A6E563E95B031436225C68D69E4C4789E13F183/scale?format=jpeg&quality=90&scalingAlgorithm=lanczos3&width=500";
-
-    // TODO: Ugly, need better conversion into anyhow here
-    reqwest::blocking::get(URL).expect("Failed fetching image").bytes().expect("Failed loading bytes from URL")
-}
-
-fn render_image(canvas: &mut Canvas<Window>) -> Result<(), String> {
-    let bg_image = load_image();
-    let texture_creator = canvas.texture_creator();
-    let texture = texture_creator.load_texture_bytes(bg_image.as_ref()).expect("Failed loading texture bytes");
-    canvas.copy(&texture, None, None).unwrap();
-    canvas.present();
-    Ok(())
-}
-
-fn render(canvas: &mut Canvas<Window>) -> Result<(), String> {
-        // Render
-        // render(&mut canvas, Color::RGB(i, 64, 255 - i));
-        canvas.set_draw_color(Color::BLACK);
-        canvas.clear();
-
-        // TODO: We won't have to worry about margins I don't think
-        // in this below
-        let ui_square = {
-            let (x, y) = canvas.viewport().size();
-            
-            if x > y {
-                // landscape
-                let left_edge = (x / 2) - (y / 2);
-                Rect::new(left_edge as i32, 0, y, y)
+/// Produces an async stream that background
+/// loads all of the iamges in a controlled manner
+/// Can tweak parallelism in here
+async fn stream_tile_images<'a>(
+    disney: &'a DisneyService,
+    content_sets: Vec<ContentSet>,
+    concurrency: usize,
+    image_size: String,
+) -> impl Stream<Item = ImageLoadBatchEvent> + '_ {
+    // Iterate over pairs (content_set_tile, tile_img_url)
+    // filtering out (and logging) those tile images without a url
+    let disney = Arc::new(disney);
+    let curated_items = content_sets.into_iter().flat_map(move |cs| {
+        let cs_title = cs.title().clone();
+        let img_size = image_size.clone();
+        cs.items().into_iter().filter_map(move |item| {
+            if let Some(img_url) = item.tile_image_url(&img_size) {
+                Some((cs_title.clone(), img_url.clone()))
             } else {
-                // portrait
-                let top_edge = (y / 2) - (x / 2);
-                Rect::new(0, top_edge as i32, y, y)
-            }            
-        };
+                println!("No image found for size {:?} and item {:?}", img_size, item);
+                None
+            }
+        })
+    });
 
-        let mut middle_section = ui_square;
-        // middle_section.set_width(middle_section.width() / 2);
-        middle_section.set_width(middle_section.width() * 2);
-        // middle_section.center_on(ui_square.center());
+    // Main flow, for each image, fetch the image bytes from the cdn
+    // logging any failures along the way
+    let disney = Arc::clone(&disney);
+    let fetch_image_futures =
+        futures::stream::iter(curated_items).map(move |(content_set_title, item_image_url)| {
+            let disney = Arc::clone(&disney);
+            async move {
+                disney
+                    .load_tile_image_bytes(&item_image_url)
+                    .await
+                    .map(|image_bytes| ImageLoadEvent {
+                        img_url: item_image_url.clone(),
+                        bytes: image_bytes,
+                        content_set_title: content_set_title.clone(),
+                    })
+                    .map(Some)
+                    .unwrap_or_else(|e| {
+                        println!("Failed fetching image url {:?}", e);
+                        None
+                    })
+            }
+        });
 
-        canvas.set_draw_color(Color::WHITE);
-        
-        // canvas.draw_rect(ui_square)?; // draws a filled rectangle, draw_rect draws a rect with a border only using the draw color
-        canvas.set_clip_rect(ui_square); // draws a filled rectangle, draw_rect draws a rect with a border only using the draw color
-        canvas.draw_rect(middle_section).expect("Failed drawing middle section");
-        canvas.present(); 
-        
-        Ok(())
+    // Taking our stream, run it concurrently (buffered)
+    // and then group together 15 images at a time or until the stream is finished
+    // sending batches of images to the UI is faster than
+    // sending individual images to the ui
+    fetch_image_futures
+        .buffered(concurrency)
+        .ready_chunks(15)
+        .map(|img_load_events| ImageLoadBatchEvent {
+            events: img_load_events.into_iter().flatten().collect(),
+        })
+}
+
+/// Loads home page content sets
+///
+/// When requesting the home page, some of the
+/// content sets are returned as "refs", and
+/// "refs" do not have any images in them.
+///
+/// Load any missing content sets
+async fn load_home_content_sets(
+    disney: &DisneyService,
+    concurrency: usize,
+) -> Result<Vec<ContentSet>> {
+    // load the home screen
+    let home_screen = disney.load_home_screen().await?;
+
+    // We want to maintain order of the content sets, so all will flow
+    // through the loader, the ones that exist already will go through completed
+    let fetched_content_sets = futures::stream::iter(home_screen.content_sets())
+        .map(|cs| async {
+            if let Some(ref_id) = cs.ref_id() {
+                disney
+                    .load_set_ref(ref_id)
+                    .await
+                    .context("Loading content set")
+            } else {
+                Ok(cs)
+            }
+        })
+        .buffered(concurrency)
+        .collect::<Vec<Result<ContentSet>>>()
+        .await;
+
+    let content_sets_without_failures: Vec<ContentSet> = fetched_content_sets
+        .into_iter()
+        .inspect(|result| {
+            if let Err(e) = result {
+                println!("Failure loading content set: {:?}", e);
+            }
+        })
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(content_sets_without_failures)
 }

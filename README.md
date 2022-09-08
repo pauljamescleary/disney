@@ -1,65 +1,76 @@
-## Render JSON Structure
+# Disney Home Screen
 
-- `data / StandardCollection / containers` - an array of container
-  - I _believe_ each one of these is a "row" to display on the screen
-  - `set / text` - the text to display for the row, contains content, language
-  - `set / meta` - defines some metdata, including `page_size` which might be useful
-  - `items` - where the _bulk_ of the data lives, describes each "cell" within a "row"
-    - each `item` is a tile to display in the row
-    - `image` - defines image to show in the tile
-      - `hero_collection`
-        - looks to be a background for this tile
-        - `0.71` - has a URL inside to the image
-          - `masterWidth` 579
-          - `masterHeight` 1055
-        - `1.78` - also has a URL inside to the image
-          - `masterWidth` 3840
-          - `masterHeight` 2160
-      - `hero_title`
-        - also looks to be a background for this tile
-        - Has sizese 1.78, 3.00, 3.91
-      - `logo`
-        - the actual TEXT on the image that appears
-        - For example, for the disney colleciton, this is an image of the words "Disney"
-        - Has ONE size 2.00
-      - `logo_layer`
-        - Contains the logo plus some additional info
-        - e.g. adds the word "Collection" and "Streaming only on Disney+"
-        - Has sizes 1.78, 3.00, 3.91
-      - `tile`
-        - Shows the entire tile, appears to be what is used in the instructions?
-        - 0.71 - appears to be PORTRAIT
-        - 1.78 - appears to be LANDSCAPE
+This application renders a demo Disney home screen and allows the user to scroll for programs / content.
 
+## Pre-requisites
 
-## Requirements
+1. [Install Rust][install-rust]
+2. [Install Clippy][install-clippy]
+3. Run `cargo install cargo-vcpkg` to install vcpkg needed to build and run this app
+4. Run `cargo vcpkg build` to build the sdl2 dependencies
 
-**Parse the json structure, and display each "row"**
+## Developing
 
-1. Pull the `item / text` as the "row title"
-2. For each row, parse the `items` collection
-   1. Render the `item / tile / 1.78` image for each tile
-   2. Initially this is all that is needed
+- `cargo clippy` - runs the linter to ensure the code is clean
+- `cargo fmt` - formats all code
+- `cargo run` - runs the application
 
-**Respond to KEYBOARD events**
+## Running
 
-I presume this allows navigating through the screen like using a remote
+- `cargo run` will start the application.  All log entries will appear in stdout in the terminal.
 
-- UP + DOWN - navigate to the "rows"
-- LEFT + RIGHT - navigate among the "tiles" WITHIN a "row"
-  
-**Focused tile must be scaled up**
+## Design
 
-I presume this happens when you NAVIGATE to a title, and focus moves to it
-Not sure exactly what is meant by "scaled up"
+This application uses [SDL2][sdl2] for the main UI engine, as that was one of the options in this take home project.
+It also appears to have good, mature `rust` library that is actively maintained.
 
-## Extra Credit
+### Code and libraries
 
-Dynamically populate the "ref sets" as they come into view?
-- Not sure what this means, if this is tiles, rows, or both?  Perhaps only render those that you can see at first?
+- [Reqwest][reqwest] - for http calls, can support blocking and non-blocking HTTP.  Using a client enables pooling of connections as SSL is the long leg of downloading content
+- [Anyhow][anyhow] - for all error handling, has convenient syntax for propagating and managing errors accross the application.  All `Result`s are actually `anyhow::Result`
+- [Futures][futures] - for future and stream extensions.  Streaming enables memory safe, controlled gathering of data
+- [Tokio][tokio] - for the async runtime
 
-Allow interaction or selection of a tile.  For example, show a modal with data on selection.
+### Concurrency
 
-Incorporate transitions and/or visual aesthetics
+The application runs under the [Tokio runtime][tokio], but most of the application itself runs on a single main thread.
+Tokio is used to enable async processing, specifically for the loading of HTTP data, content sets, and images.
+The overall design can be modified to support different threading models (including using rust native spawn), but 
+Tokio was chosen for familiarity and features.
 
-Add some Disney Magic
+Concurrency might need to be constrained (or impossible?) on devices with more limited resources.  The `concurrency` is 
+hard-coded to "20" concurrent futures being run.  Since that is all non-blocking, that can easily be changed based 
+on the profile of the device, or passed in as a config argument.
+
+### Screen Size
+
+For the screen size, I chose 1920x1080 as the default, and hard coded the image size to be "1.78", which is 
+the ration of width to height for the images that are chosen in the application.
+
+### Image loading
+
+Images are loaded in a background thread that pipes them into the application's main event loop.  This is done via 
+the `EventSender` from SDL2.  The application batches images "aribtrarily" into groups of 15, as that seemed 
+to be a sweet spot for updating the UI.
+
+### Rendering
+
+When the application is updated via a keystroke or an image loading, the `viewport` of the window is analyzed 
+to see if the current component is "in view".  If not, rendering will be skipped.  This cuts down on 
+blocking the entire application until all images are loaded.
+
+### JSON
+
+The application uses [Serde JSON][serde] for json deserialization.  This makes deserialization simple via derivation, 
+but is likely not the most optimal way to load data.  Given more time, creating a streaming Deserializer would be preferable, 
+as we can immediately fetch missing content sets (ref) and start fetching images immediately.  The current 
+application requires the entire home screen json to be parsed before proceeding with loading the UI.
+
+[anyhow]: https://docs.rs/anyhow/latest/anyhow/
+[futures]: https://docs.rs/futures/latest/futures/
+[install-clippy]: https://github.com/rust-lang/rust-clippy#as-a-cargo-subcommand-cargo-clippy
+[install-rust]: https://forge.rust-lang.org/infra/other-installation-methods.html
+[reqwest]: https://docs.rs/reqwest/latest/reqwest/
+[sdl2]: https://docs.rs/sdl2/latest/sdl2/
+[serde]: https://serde.rs/
+[tokio]: https://tokio.rs/

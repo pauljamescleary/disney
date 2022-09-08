@@ -4236,7 +4236,7 @@
                         "meta": {
                             "hits": 24,
                             "offset": 0,
-                            "page_size": 15
+                            "Home_size": 15
                         },
                         "setId": "d0c43e18-1348-4b1c-9b3f-58eaa22fa5a7",
                         "text": {
@@ -6341,7 +6341,7 @@
                         "meta": {
                             "hits": 25,
                             "offset": 0,
-                            "page_size": 15
+                            "Home_size": 15
                         },
                         "setId": "c650aa1c-34cc-4fbe-8f62-46a6a9f77a2e",
                         "text": {
@@ -11008,7 +11008,7 @@
                         "meta": {
                             "hits": 25,
                             "offset": 0,
-                            "page_size": 15
+                            "Home_size": 15
                         },
                         "setId": "66f31225-18bd-48b7-84c1-17efba0aab16",
                         "text": {
@@ -15320,7 +15320,7 @@
                         "meta": {
                             "hits": 23,
                             "offset": 0,
-                            "page_size": 15
+                            "Home_size": 15
                         },
                         "setId": "23f87cf1-fbdc-4d02-845c-01d735c793b6",
                         "text": {
