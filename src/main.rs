@@ -44,9 +44,10 @@ async fn main() -> Result<()> {
         .window("Home", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .resizable()
+        .opengl()
         .build()?;
 
-    let mut canvas = window.into_canvas().build()?;
+    let mut canvas = window.into_canvas().build()?;    
 
     let font = ttf_context
         .load_font(Path::new("./assets/Roboto-Regular.ttf"), 18)

@@ -83,9 +83,9 @@ pub struct ContentSet {
     items: Vec<ContentSetItem>, // represents all of the programs in a curated set
 }
 impl ContentSet {
-    pub fn set_title(&self, title: &String) -> ContentSet {
+    pub fn set_title(&self, title: &str) -> ContentSet {
         let mut new = self.clone();
-        new.text.title.full.set.default.content = title.clone();
+        new.text.title.full.set.default.content = title.to_string();
         new
     }
     pub fn title(&self) -> &String {

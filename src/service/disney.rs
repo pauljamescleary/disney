@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures::{stream, Stream, StreamExt};
 use reqwest::{Client, StatusCode};
 
 use crate::{
@@ -30,37 +30,40 @@ impl DisneyService {
     ) -> impl Stream<Item = ImageLoadBatchEvent> + '_ {
         // Iterate over pairs (content_set_tile, tile_img_url)
         // filtering out (and logging) those tile images without a url
-        let curated_items = content_sets.into_iter().flat_map(move |cs| {
-            let cs_title = cs.title().clone();
-            let img_size = image_size.clone();
-            cs.items().into_iter().filter_map(move |item| {
-                if let Some(img_url) = item.tile_image_url(&img_size) {
-                    Some((cs_title.clone(), img_url.clone()))
-                } else {
-                    println!("No image found for size {:?} and item {:?}", img_size, item);
-                    None
-                }
-            })
-        });
+        let curated_items = content_sets
+            .into_iter()
+            .flat_map(move |cs| {
+                let cs_title = cs.title().clone();
+                let img_size = image_size.clone();
+                cs.items().into_iter().filter_map(move |item| {
+                    if let Some(img_url) = item.tile_image_url(&img_size) {
+                        Some((cs_title.clone(), img_url.clone()))
+                    } else {
+                        println!("No image found for size {:?} and item {:?}", img_size, item);
+                        None
+                    }
+                })
+            });
 
         // Main flow, for each image, fetch the image bytes from the cdn
         // logging any failures along the way
-        let fetch_image_futures = futures::stream::iter(curated_items).map(
-            move |(content_set_title, item_image_url)| async move {
-                self.load_tile_image_bytes(&item_image_url)
-                    .await
-                    .map(|image_bytes| ImageLoadEvent {
-                        img_url: item_image_url.clone(),
-                        bytes: image_bytes,
-                        content_set_title: content_set_title.clone(),
-                    })
-                    .map(Some)
-                    .unwrap_or_else(|e| {
-                        println!("Failed fetching image url {:?}", e);
-                        None
-                    })
-            },
-        );
+        let fetch_image_futures = 
+            stream::iter(curated_items).map(
+                move |(content_set_title, item_image_url)| async move {
+                    self.load_tile_image_bytes(&item_image_url)
+                        .await
+                        .map(|image_bytes| ImageLoadEvent {
+                            img_url: item_image_url.clone(),
+                            bytes: image_bytes,
+                            content_set_title: content_set_title.clone(),
+                        })
+                        .map(Some)
+                        .unwrap_or_else(|e| {
+                            println!("Failed fetching image url {:?}", e);
+                            None
+                        })
+                },
+            );
 
         // Taking our stream, run it concurrently (buffered)
         // and then group together 15 images at a time or until the stream is finished
@@ -87,7 +90,7 @@ impl DisneyService {
 
         // We want to maintain order of the content sets, so all will flow
         // through the loader, the ones that exist already will go through completed
-        let fetched_content_sets = futures::stream::iter(home_screen.content_sets())
+        let fetched_content_sets = stream::iter(home_screen.content_sets())
             .map(|cs| async {
                 if let Some(ref_id) = cs.ref_id() { 
                     // Note: sometimes the title coming back
@@ -101,7 +104,7 @@ impl DisneyService {
                     Ok(cs)
                 }
             })
-            .buffered(self.concurrency)
+            .buffered(self.concurrency) // runs n futures in parallel
             .collect::<Vec<Result<ContentSet>>>()
             .await;
 
@@ -145,12 +148,15 @@ impl DisneyService {
             .send()
             .await
             .context("Fetching ref from url")?;
+
         let data = response
             .bytes()
             .await
             .context("Fetching bytes from response")?;
+
         let set_ref: SetRef = serde_json::from_slice(&data)
             .context(format!("Deserializing curated set ref {}", ref_id))?;
+
         set_ref
             .content_set()
             .ok_or_else(|| anyhow!("Unable to find a curated set"))
