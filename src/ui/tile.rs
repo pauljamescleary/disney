@@ -17,7 +17,6 @@ pub struct ShelfTile {
     default_height: u32,
 }
 impl ShelfTile {
-
     /// Loads a tile
     pub fn load(item: ContentSetItem, x: i32, y: i32, height: u32) -> ShelfTile {
         let default_width = (height as f32 * 1.78) as u32;
@@ -68,7 +67,7 @@ impl ShelfTile {
 
     pub fn set_img(&mut self, bytes: Bytes) {
         self.img_raw = Some(bytes);
-    }   
+    }
 
     pub fn image_url(&self) -> &String {
         &self.img_url
@@ -76,7 +75,7 @@ impl ShelfTile {
 
     pub fn set_x(&mut self, new_x: i32) {
         self.rect.set_x(new_x);
-    } 
+    }
 
     pub fn x(&self) -> i32 {
         self.rect.x()
@@ -84,7 +83,7 @@ impl ShelfTile {
 
     pub fn set_y(&mut self, new_y: i32) {
         self.rect.set_y(new_y);
-    }    
+    }
 
     pub fn y(&self) -> i32 {
         self.rect.y()

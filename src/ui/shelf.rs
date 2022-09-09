@@ -1,6 +1,7 @@
 use crate::event::ImageLoadEvent;
 use crate::model::home::ContentSet;
 use crate::ui::tile::ShelfTile;
+use log::warn;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, TextureQuery};
@@ -24,7 +25,6 @@ pub struct Shelf {
     label_height: Option<u32>,
 }
 impl Shelf {
-
     /// Loads a Shelf
     /// Loads tiles that live on the shelf
     pub fn load(content_set: ContentSet, height: u32, tile_padding: u32, y: i32) -> Shelf {
@@ -71,7 +71,7 @@ impl Shelf {
         if let Some(tile) = maybe_found_tile {
             tile.set_img(event.bytes);
         } else {
-            println!("Unable to find tile for image {:?}", event.img_url);
+            warn!("Unable to find tile for image {:?}", event.img_url);
         }
     }
 

@@ -1,6 +1,7 @@
 use anyhow::{Error, Result};
 use event::ImageLoadBatchEvent;
 use futures::StreamExt;
+use log::info;
 use model::home::ContentSet;
 use sdl2::event::{Event, EventSender};
 use sdl2::image::InitFlag;
@@ -12,6 +13,7 @@ use sdl2::video::Window;
 use service::disney::DisneyService;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 use ui::home_page::HomePage;
 
 mod event;
@@ -26,9 +28,14 @@ const DEFAULT_CONCURRENCY: usize = 20;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let disney = DisneyService::new(DEFAULT_CONCURRENCY);
 
+    info!("Starting up...");
+
     // we have all of the content sets, they don't have images loaded yet, but we can load the screen
+    info!("Loading home contents...");
     let fetched_content_sets = disney.load_home_content_sets().await?;
 
     // send content sets into the home page, consuming the content sets
@@ -47,7 +54,7 @@ async fn main() -> Result<()> {
         .opengl()
         .build()?;
 
-    let mut canvas = window.into_canvas().build()?;    
+    let mut canvas = window.into_canvas().build()?;
 
     let font = ttf_context
         .load_font(Path::new("./assets/Roboto-Regular.ttf"), 18)
@@ -146,13 +153,14 @@ fn background_load_images(
     let disney = Arc::new(disney);
     tokio::spawn({
         async move {
+            let start_time = Instant::now();
+            info!("Begin loading tile images...");
             disney
                 .stream_tile_images(fetched_content_sets, DEFAULT_IMAGE_SIZE.to_string())
                 .await
                 .for_each(|image_batch_event| {
                     let event_sender = Arc::clone(&event_sender);
                     async move {
-
                         // Sends a batch of images into the main event loop
                         event_sender
                             .push_custom_event(image_batch_event)
@@ -160,6 +168,11 @@ fn background_load_images(
                     }
                 })
                 .await;
+
+            info!(
+                "Finished loading tile images duration = {} millis",
+                start_time.elapsed().as_millis()
+            );
         }
     });
 }

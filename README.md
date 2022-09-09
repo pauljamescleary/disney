@@ -14,7 +14,7 @@ This application renders a demo Disney home screen and allows the user to scroll
 - `cargo vcpkg build` to build the sdl2 dependencies (this will take some time)
 - `cargo clippy` - runs the linter to ensure the code is clean
 - `cargo fmt` - formats all code
-- `cargo run` - runs the application
+- `RUST_LOG=info cargo run` - runs the application, if you omit `RUST_LOG` no logs will be output
 
 ## Running
 
@@ -74,7 +74,13 @@ but is likely not the most optimal way to load data.  Given more time, creating 
 as we can immediately fetch missing content sets (ref) and start fetching images immediately.  The current 
 application requires the entire home screen json to be parsed before proceeding with loading the UI.
 
+### Config
+
+The current system has hard-coded links for download, and other parameters like window size and concurrency.  Many of these 
+should be provided via something like [Clap][clap].
+
 [anyhow]: https://docs.rs/anyhow/latest/anyhow/
+[clap]: https://github.com/clap-rs/clap
 [futures]: https://docs.rs/futures/latest/futures/
 [install-clippy]: https://github.com/rust-lang/rust-clippy#as-a-cargo-subcommand-cargo-clippy
 [install-rust]: https://forge.rust-lang.org/infra/other-installation-methods.html

@@ -1,6 +1,7 @@
 use crate::event::ImageLoadEvent;
 use crate::model::home::ContentSet;
 use crate::ui::shelf::Shelf;
+use log::warn;
 use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;
@@ -15,8 +16,7 @@ pub struct HomePage {
     shelf_height: u32,
 }
 impl HomePage {
-
-    /// Loads a home page component, but does 
+    /// Loads a home page component, but does
     /// not do any rendering
     pub fn load(
         content_sets: Vec<ContentSet>,
@@ -70,8 +70,8 @@ impl HomePage {
         if let Some(found_row) = maybe_found_row {
             found_row.on_image_load(event);
         } else {
-            println!(
-                "DID NOT FIND ROW FOR EVENT IMG {:?}",
+            warn!(
+                "Did not find row for event; content set title = {:?}",
                 event.content_set_title
             );
         }
