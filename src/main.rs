@@ -60,13 +60,11 @@ async fn main() -> Result<()> {
     let ev = sdl_context.event().map_err(Error::msg)?;
     ev.register_custom_event::<ImageLoadBatchEvent>()
         .map_err(Error::msg)?;
-    let evs = ev.event_sender();
-    // let event_sender = Arc::new(evs);
 
     // kick off background process to async load images and send events
     // each batch of images are sent to the main event loop
     // to update the view
-    background_load_images(fetched_content_sets, disney, evs);
+    background_load_images(fetched_content_sets, disney, ev.event_sender());
 
     // This moves all the things we just drew to the foreground
     canvas.present();
